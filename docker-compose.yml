@@ -1,0 +1,80 @@
+version: "3"
+services:
+  registry-web:
+    container_name: registry-web
+    image: hyper/docker-registry-web
+    ports:
+      - 8080:8080
+    volumes:
+      - "./config.yml:/conf/config.yml:ro"
+
+  registry:
+    container_name: registry
+    image: registry:2.6
+    ports:
+      - 5000:5000
+    volumes:
+      - "./registry-data:/var/lib/registry"
+
+  manager:
+    container_name: manager
+    image: docker:20.10-dind
+    privileged: true
+    tty: true
+    ports:
+      - 11000:80
+      - 9000:9000
+      - 8081:8081
+      - 4567:4567
+    depends_on:
+      - registry
+    expose:
+      - 3375
+    command: "--insecure-registry registry:5000"
+    volumes:
+      - "./stack:/stack"
+      - "./dashboard:/dashboard"
+
+  worker:
+    image: docker:20.10-dind
+    privileged: true
+    tty: true
+    depends_on:
+      - manager
+      - registry
+    expose:
+      - 7946
+      - 7946/udp
+      - 4789/udp
+    command: "--insecure-registry registry:5000"
+    deploy:
+      replicas: 3
+
+  jenkins:
+    container_name: jenkins
+    image: jenkins/jenkins:lts
+    ports:
+      - 8082:8080
+      - 50000:50000
+    depends_on:
+      - manager
+      - registry
+    volumes:
+      - "./jenkins_home:/var/jenkins_home"
+    environment:
+      - JENKINS_OPTS=--httpPort=8080
+
+  gitlab:
+    container_name: gitlab
+    image: gitlab/gitlab-ce:latest
+    ports:
+      - 8083:80
+    depends_on:
+      - registry
+    volumes:
+      - "./gitlab-config:/etc/gitlab"
+      - "./gitlab-logs:/var/log/gitlab"
+      - "./gitlab-data:/var/opt/gitlab"
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab.example.com'
